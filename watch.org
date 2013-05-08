@@ -1,0 +1,672 @@
+#+PROPERTY: noweb yes
+
+* Set up global grid
+
+This is a global $5'$ that runs from 67N to 60S.  Write a CDO grid
+description file.  
+
+
+** $5'$ global grid
+
+#+BEGIN_SRC sh :results output verbatim
+  cat <<EOF > global_5min.grid
+  gridtype = lonlat 
+  xsize    = 4320
+  ysize    = 1524
+  xfirst   = -179.95833333
+  xinc     =    0.08333333 
+  yfirst   =  -59.95833 
+  yinc     =    0.08333333
+  EOF
+  cat global_5min.grid
+#+END_SRC
+
+#+RESULTS:
+: gridtype = lonlat 
+: xsize    = 4320
+: ysize    = 1524
+: xfirst   = -179.95833333
+: xinc     =    0.08333333 
+: yfirst   =  -59.95833 
+: yinc     =    0.08333333
+
+** $30'$ global grid
+
+#+BEGIN_SRC sh :results output verbatim
+  cat <<EOF > global_30min.grid
+  gridtype = lonlat 
+  xsize    =  720
+  ysize    =  254
+  xfirst   = -179.5
+  xinc     =    0.5
+  yfirst   =  -59.5
+  yinc     =    0.5
+  EOF
+  cat global_30min.grid
+#+END_SRC
+
+#+RESULTS:
+: gridtype = lonlat 
+: xsize    =  720
+: ysize    =  254
+: xfirst   = -179.5
+: xinc     =    0.5
+: yfirst   =  -59.5
+: yinc     =    0.5
+
+This will be used to resample the input data.
+
+
+* Compose and execute CDO commands
+  :PROPERTIES:
+  :session:  *R*
+  :tangle:   tangle/cdo.R
+  :results:  silent
+  :END:
+
+#+NAME:watchVars
+#+BEGIN_SRC R :eval no
+  watchVars <- c(
+    precip= "pr_gpcc",
+    solar=  "rsds",
+    tmax=   "tasmax",
+    tmin=   "tasmin")
+#+END_SRC
+
+#+BEGIN_SRC R
+  library( doMC)
+  registerDoMC( 4)
+  
+  <<watchVars>>
+  
+  cdoCommands <-
+    sprintf(
+      paste(
+        "cdo -O -f nc4 -z zip mergetime",
+        "data/input/%1$s_watch_*",
+        "data/output/%1$s_watch_1958-2001.nc4 &&",
+        "cdo -O -f nc4 -z zip remapnn,global_30min.grid",
+        "data/output/%1$s_watch_1958-2001.nc4",
+        "data/output/%1$s_watch_1958-2001_30min.nc4",
+        "2>&1"),
+      watchVars)
+  names( cdoCommands) <- watchVars
+#+END_SRC
+
+#+BEGIN_SRC R :results value replace
+  cdoCommands
+#+END_SRC
+
+#+RESULTS:
+| cdo -O -f nc4 -z zip mergetime data/input/pr_gpcc_watch_* data/output/pr_gpcc_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1958-2001.nc4 data/output/pr_gpcc_watch_1958-2001_30min.nc4 2>&1 |
+| cdo -O -f nc4 -z zip mergetime data/input/rsds_watch_* data/output/rsds_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/rsds_watch_1958-2001.nc4 data/output/rsds_watch_1958-2001_30min.nc4 2>&1             |
+| cdo -O -f nc4 -z zip mergetime data/input/tasmax_watch_* data/output/tasmax_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/tasmax_watch_1958-2001.nc4 data/output/tasmax_watch_1958-2001_30min.nc4 2>&1     |
+| cdo -O -f nc4 -z zip mergetime data/input/tasmin_watch_* data/output/tasmin_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/tasmin_watch_1958-2001.nc4 data/output/tasmin_watch_1958-2001_30min.nc4 2>&1     |
+
+#+BEGIN_SRC R
+  cdoOutput <- 
+    foreach( cdo= cdoCommands) %dopar% {
+      system( cdo, intern= TRUE)
+    }
+  names( cdoOutput) <- watchVars
+#+END_SRC
+
+#+BEGIN_SRC R :results value replace
+  cdoOutput
+#+END_SRC
+
+#+RESULTS:
+| cdo remapnn: Processed 4165603200 values from 1 variable over 16071 timesteps ( 11192.19s ) | cdo remapnn: Processed 4165603200 values from 1 variable over 16071 timesteps ( 11306.74s ) | cdo remapnn: Processed 4165603200 values from 1 variable over 16071 timesteps ( 11287.92s ) | cdo remapnn: Processed 4165603200 values from 1 variable over 16071 timesteps ( 11399.20s ) |
+
+
+
+* Create a mask from the first day's data
+  :PROPERTIES:
+  :session:  *R*
+  :END:
+
+#+BEGIN_SRC sh :session :results output
+  gdal_translate -ot Byte -b 1 \
+      -a_srs EPSG:4326 \
+      -a_ullr -180 67 180 -60 \
+      -a_nodata 255 \
+      -scale 0 1 1 1 \
+      data/output/pr_gpcc_watch_1958-2001_30min.nc4 \
+      data/output/watchMask30min.tif
+#+END_SRC
+
+#+RESULTS:
+: Input file size is 720, 254
+: 0...10...20...30...40...50...60...70...80...90...100 - done.
+
+#+BEGIN_SRC sh :session :results output
+  gdalinfo data/output/watchMask30min.tif
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+Driver: GTiff/GeoTIFF
+Files: data/output/watchMask30min.tif
+Size is 720, 254
+Coordinate System is:
+GEOGCS["WGS 84",
+    DATUM["WGS_1984",
+        SPHEROID["WGS 84",6378137,298.257223563,
+            AUTHORITY["EPSG","7030"]],
+        AUTHORITY["EPSG","6326"]],
+    PRIMEM["Greenwich",0],
+    UNIT["degree",0.0174532925199433],
+    AUTHORITY["EPSG","4326"]]
+Origin = (-180.000000000000000,67.000000000000000)
+Pixel Size = (0.500000000000000,-0.500000000000000)
+Metadata:
+  AREA_OR_POINT=Area
+  lat#axis=Y
+  lat#long_name=latitude
+  lat#standard_name=latitude
+  lat#units=degrees_north
+  lon#axis=X
+  lon#long_name=longitude
+  lon#standard_name=longitude
+  lon#units=degrees_east
+  NC_GLOBAL#CDI=Climate Data Interface version 1.5.9 (http://code.zmaw.de/projects/cdi)
+  NC_GLOBAL#CDO=Climate Data Operators version 1.5.9rc1 (http://code.zmaw.de/projects/cdo)
+  NC_GLOBAL#comment=WATCH Forcing Data converted for ISI-MIP use by M.Buechner (buechner@pik-potsdam.de)
+  NC_GLOBAL#Conventions=CF-1.0
+  NC_GLOBAL#history=Wed May 01 16:08:31 2013: cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1958-2001.nc4 data/output/pr_gpcc_watch_1958-2001_30min.nc4
+Wed May 01 16:00:33 2013: cdo -O -f nc4 -z zip mergetime data/input/pr_gpcc_watch_1958-1959.nc4 data/input/pr_gpcc_watch_1960-1969.nc4 data/input/pr_gpcc_watch_1970-1979.nc4 data/input/pr_gpcc_watch_1980-1989.nc4 data/input/pr_gpcc_watch_1990-1999.nc4 data/input/pr_gpcc_watch_2000-2001.nc4 data/output/pr_gpcc_watch_1958-2001.nc4
+  pr#_FillValue=1e+20
+  pr#code=1
+  pr#long_name=precipitation flux
+  pr#standard_name=precipitation_flux
+  pr#units=kg m-2 s-1
+  time#calendar=proleptic_gregorian
+  time#standard_name=time
+  time#units=days since 1860-01-01 00:00:00
+Image Structure Metadata:
+  INTERLEAVE=BAND
+Corner Coordinates:
+Upper Left  (-180.0000000,  67.0000000) (180d 0' 0.00"W, 67d 0' 0.00"N)
+Lower Left  (-180.0000000, -60.0000000) (180d 0' 0.00"W, 60d 0' 0.00"S)
+Upper Right ( 180.0000000,  67.0000000) (180d 0' 0.00"E, 67d 0' 0.00"N)
+Lower Right ( 180.0000000, -60.0000000) (180d 0' 0.00"E, 60d 0' 0.00"S)
+Center      (   0.0000000,   3.5000000) (  0d 0' 0.01"E,  3d30' 0.00"N)
+Band 1 Block=720x11 Type=Byte, ColorInterp=Gray
+  NoData Value=255
+  Metadata:
+    _FillValue=1e+20
+    code=1
+    long_name=precipitation flux
+    NETCDF_DIMENSION_time=35794
+    NETCDF_time_units=days since 1860-01-01 00:00:00
+    NETCDF_VARNAME=pr
+    standard_name=precipitation_flux
+    units=kg m-2 s-1
+#+end_example
+
+
+#+NAME: watchMask
+#+BEGIN_SRC R :results silent
+  watchMask <- setMinMax(
+    raster( "data/output/watchMask30min.tif"))
+#+END_SRC
+
+** write out CSV of WATCH mask
+
+#+BEGIN_SRC R :tangle
+  world30min <- raster()
+  res( world30min) <- 30/60
+  world30min[] <- 1:ncell( world30min)
+  watchCells <- crop( world30min, watchMask)
+  watchCells <- mask( watchCells, watchMask)
+  
+  rowColDf <-
+    as.data.frame(
+      rowColFromCell(
+        world30min,
+        watchCells[ !is.na( watchCells[])]))
+  
+  rowColDf$global30min <-
+    with(
+      rowColDf,
+      cellFromRowCol( world30min, row, col))
+    
+  write.csv(
+    rowColDf,
+    file= "data/output/watchMask30min.csv",
+    row.names= FALSE)
+  
+#+END_SRC
+
+#+BEGIN_SRC sh :session :results verbatim
+  head data/output/watchMask30min.csv
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+"row","col","global30min"
+47,1,33121
+47,2,33122
+47,3,33123
+47,4,33124
+47,5,33125
+47,6,33126
+47,7,33127
+47,8,33128
+47,9,33129
+#+end_example
+
+
+* Use scheduler to write .psims.nc4 files
+  :PROPERTIES:
+  :session:  *R*
+  :END:
+
+
+** The little-r script that runs on the nodes
+   :PROPERTIES:
+   :tangle:   tangle/cellNc.r
+   :END:
+
+#+BEGIN_SRC R :results silent :shebang #!/home/nbest/local/bin/r 
+  ## --interactive
+  
+  stripe <- as.integer( argv[ 1])
+  ## stripe <- 1
+  
+  library( ncdf4)
+  library( raster)
+  library( abind)
+  library( ascii)
+  options( asciiType= "org")
+  
+  library( doMC)  
+  ## registerDoMC( multicore:::detectCores())
+  registerDoMC( 8)
+  
+  ## options( error= recover)
+  
+#+END_SRC  
+
+
+#+BEGIN_SRC R :results raw output
+  <<watchVars>>
+  ## watchVars[ "precip"] <- "pr" 
+  ascii( as.list( watchVars), list.type= "label")
+#+END_SRC
+
+#+RESULTS:
+- precip :: pr_gpcc
+- solar :: rsds
+- tmax :: tasmax
+- tmin :: tasmin
+
+
+*** set mask and anchor points 
+
+#+BEGIN_SRC R :results silent
+  ## function getNcByVarYear( var, year)
+  ## computes file name of input netCDF file by variable name and year
+  ## and opens it
+  
+  ## getNcByVarYear <- function( var, year) {
+  ##   ncFn <- sprintf( "data/nc/%1$s/%1$s_%2$d.nc", var, year)
+  ##   list( nc_open( ncFn))
+  ## }
+  
+  <<watchMask>>
+    
+  watchAnchorPoints <-
+    cbind(
+      lon= seq(
+        from= xmin( watchMask),
+        to= xmax( watchMask)- res( watchMask)[1],
+        by= 1), ## res( watchMask)[1] * 10),
+      lat= ymax( watchMask))
+#+END_SRC
+
+#+BEGIN_SRC R :tangle :results raw output
+  ascii( head( watchAnchorPoints), digits=3, include.colnames= TRUE)
+#+END_SRC
+
+#+RESULTS:
+|      lon |    lat |
+| -180.000 | 67.000 |
+| -179.000 | 67.000 |
+| -178.000 | 67.000 |
+| -177.000 | 67.000 |
+| -176.000 | 67.000 |
+| -175.000 | 67.000 |
+
+
+*** readWatchValues() reads in all data for a stripe
+
+Given the stripe's corner in lon,lat and a width in cells.
+
+#+BEGIN_SRC R :results silent
+  readWatchValues <- function(  xy, var= "tmin", n= 10) {
+    ncFn <- sprintf( "data/output/%s_watch_1958-2001_30min.nc4", watchVars[ var])
+    nc <- nc_open( ncFn)
+    ## r <- raster( ncFn, band= 1)
+    r <- raster( watchMask)
+    column <-
+      rowColFromCell(
+        r, cellFromXY(
+          r, xy= xy))[ 2]
+    m <-
+      ncvar_get(
+        nc,
+        varid= names( nc$var),
+        start= c( column, 1, 1),
+        count= c( n, -1, -1),             # collapse_degen seems to have
+        collapse_degen= FALSE)            # no effect
+    watchDays <-
+      ncvar_get(
+        nc,
+        varid= "time",
+        start= 1,
+        count= -1)
+    dn <- list(
+      longitude= nc$dim$lon$vals[ column:(column +n -1)],
+      latitude=  nc$dim$lat$vals[],
+      time= watchDays)
+    if( length( dim( m)) == 2)
+      dim(m) <- c( 1, dim(m))             # to compensate for apparent
+    dimnames( m) <- dn                    # collapse_degen bug
+    m
+  }
+#+END_SRC  
+
+
+*** Read in values for a single stripe
+
+#+BEGIN_SRC R :results output
+  
+  ## cat( sprintf( "Time to load data for stripe %d:", stripe))
+  
+  ## system.time( {
+  
+    watchValues <-
+      foreach(
+        var= names( watchVars)
+        ## var= "tmin",
+        ## .inorder= TRUE) %:%
+        ##   foreach(
+        ##     year= years,
+        ## .combine= abind,
+        ##.multicombine= TRUE
+        ) %dopar% {
+          readWatchValues( watchAnchorPoints[ stripe,], var= var)
+        }
+    names( watchValues) <- names( watchVars)
+    for( var in names( watchVars))
+      names( dimnames( watchValues[[ var]])) <-
+        c( "longitude", "latitude", "time")
+  
+  ## })
+  
+#+END_SRC
+
+#+RESULTS:
+:    user  system elapsed 
+: 327.331  28.770 152.561
+
+
+*** these functions are used to set up the .psims.nc4 files 
+
+
+**** ncDimsFunc() creates the dimensions
+
+#+BEGIN_SRC R :results silent
+    ncDimsFunc <- function(
+      xy, ncDays,
+      ncTimeName= "narr/time",
+      ncTimeUnits= "days since 1978-12-31 00:00:00") {
+      list(
+        ncdim_def(
+          name= "longitude",
+          units= "degrees_east",
+          vals= xy[[ "lon"]]),
+        ncdim_def(
+          name= "latitude",
+          units= "degrees_north",
+          vals= xy[[ "lat"]]),
+        ncdim_def(
+          name= ncTimeName,
+          units= ncTimeUnits,
+          vals= ncDays,
+          unlim= TRUE))
+    }
+
+#+END_SRC    
+
+
+**** ncVarsFunc() creates the variables using appropriate groups
+
+#+BEGIN_SRC R :results silent
+  ncVarsFunc <- function(
+    xy, ncDays,
+    ncGroupName= "narr",
+    ncTimeUnits= "days since 1978-12-31 00:00:00",
+    compression= 5) {
+    list(
+      ncvar_def(
+        name= sprintf( "%s/tmin", ncGroupName),
+        units= "C",
+        longname= "daily minimum temperature",
+        dim= ncDimsFunc( xy, ncDays,
+          ncTimeUnits,
+          ncTimeName= sprintf( "%s/time", ncGroupName)),
+        compression= compression),
+      ncvar_def(
+        name= sprintf( "%s/tmax", ncGroupName),
+        units= "C",
+        longname= "daily maximum temperature",
+        dim= ncDimsFunc( xy, ncDays,
+          ncTimeUnits,
+          ncTimeName= sprintf( "%s/time", ncGroupName)),
+        compression= compression),
+      ncvar_def(
+        name= sprintf( "%s/precip", ncGroupName),
+        units= "mm",
+        longname= "daily total precipitation",
+        dim= ncDimsFunc( xy, ncDays,
+          ncTimeUnits,
+          ncTimeName= sprintf( "%s/time", ncGroupName)),
+        compression= compression),
+      ncvar_def(
+        name= sprintf( "%s/solar", ncGroupName),
+        units= "MJ/m^2/day",
+        longname= "daily average downward short-wave radiation flux",
+        dim= ncDimsFunc( xy, ncDays,
+          ncTimeUnits,
+          ncTimeName= sprintf( "%s/time", ncGroupName)),            
+        compression= compression))
+  }
+    
+#+END_SRC    
+
+
+**** psimsNcFromXY() creates the .psims.nc4 file and its directory
+
+#+BEGIN_SRC R :results silent
+  psimsNcFromXY <- function(
+    xy, ncDays,
+    resWorld= 0.5,
+    ncTimeUnits= "days since 1860-01-01 00:00:00") {
+    if( xy[[ "lon"]] > 180) {
+      xy[[ "lon"]] <- xy[[ "lon"]] - 360
+    }
+    world <- raster()
+    res( world) <- resWorld
+    rowCol <- as.list( rowColFromCell( world, cellFromXY( world, xy))[1,])
+    ncFile <- sprintf( "data/psims/%1$d/%2$d/%1$d_%2$d.psims.nc4", rowCol$row, rowCol$col)
+    if( !file.exists( dirname( ncFile))) {
+      dir.create( path= dirname( ncFile), recursive= TRUE)
+    }
+    if( file.exists( ncFile)) file.remove( ncFile)
+    nc_create(
+      filename= ncFile,
+      vars= ncVarsFunc( xy, ncDays, 
+        ncGroupName= "watch",
+        ncTimeUnits= ncTimeUnits),
+      force_v4= TRUE,
+      verbose= FALSE)
+  }
+  
+#+END_SRC
+
+
+**** COMMENT inWatchMask() checks the mask 
+
+to decide whether to write a file for a given cell
+
+#+BEGIN_SRC R :results silent :tangle :eval no
+  inWatchMask <- function( xy, file= "data/output/watchMask30min.tif") {
+    watchMask <- raster( file)
+    !is.na( extract( watchMask, rbind( xy)))
+  }
+
+#+END_SRC  
+
+
+**** writePsimsNc() converts the units and writes out the time series
+
+to the .psims.nc4 file
+
+#+BEGIN_SRC R :results silent
+  writePsimsNc <- function( watchValues, col, row) {
+    xy <- c(
+      lon= as.numeric( dimnames( watchValues[[ "tmin"]])$longitude[ col]),
+      lat= as.numeric( dimnames( watchValues[[ "tmin"]])$latitude[  row]))
+    if( !is.na( extract( watchMask, rbind( xy)))) return( NA)
+    psimsNc <- psimsNcFromXY(
+      xy, ncDays= as.integer( dimnames( watchValues[[ "tmin"]])$time))
+    for( var in names( watchValues)) {
+      vals <- watchValues[[ var]][ col, row,]
+      vals <- switch( var,
+          solar= vals *86400 /1000000, # Change units to MJ /m^2 /day
+          tmin= vals -273.15,          # change K to C
+          tmax= vals -273.15,
+          precip= vals)
+      ## browser()
+      ncvar_put(
+        nc= psimsNc,
+        varid= sprintf( "watch/%s", var),
+        vals= vals,
+        count= c( 1, 1, -1))
+    }
+    nc_close( psimsNc)
+    psimsNc$filename
+  }
+#+END_SRC  
+
+
+**** loop over the stripe in parallel
+
+Write a .psims.nc4 file for each grid cell in the mask.
+
+#+BEGIN_SRC R
+  
+  ## time <-
+  ##   system.time(
+  
+  psimsNcFile <-
+    foreach( col= 1:10, .combine= c) %:%
+    foreach( row= 1:254, .combine= c) %dopar% {
+      writePsimsNc( watchValues, col, row)
+    }
+  
+  ##   )
+  
+  cat(
+    psimsNcFile,
+    ## sprintf( "\n\nTime to write %d files:", length( psimsNcFile)),
+    sep= "\n")
+  
+  ## print( time)
+  
+  
+#+END_SRC
+
+
+** cellNc.sbatch defines the jobs
+
+#+BEGIN_SRC sh :shebang #!/bin/bash -l :tangle tangle/cellNc.sbatch
+
+#SBATCH --account=pi-joshuaelliott
+#SBATCH --qos=normal
+#SBATCH --partition=bigmem
+# #SBATCH --partition=westmere,sandyb
+# #SBATCH --partition=sandyb
+#SBATCH --time=60  # max minutes per run, will help the scheduler to get your job to run faster
+#SBATCH --exclusive
+
+START=$(date)
+tangle/cellNc.r ${stripe}
+END=$(date)
+echo "started at $START"
+echo "ended at $END"
+
+#+END_SRC
+
+** cellNc.sh submits a job for each stripe to the scheduler
+
+#+BEGIN_SRC sh :session :results verbatim :shebang #!/bin/bash :tangle tangle/cellNc.sh
+
+# based directly on an example provided by Dylan Hall (UofC RCC)
+
+printf "| Submitting :: %10s | %+10s | %10s | %10s | %s |\n"\
+  "job name" "output file" "error file" "sbatch file" "job id"
+# for stripe in {3..72};
+# for stripe in {1..2};
+for stripe in 6 11 13 15 17 18 23 25 26 33 35 53 54 56; 
+do
+    job_name="cellNc.r.${stripe}"  #name I came up with
+    out_file=./logs/${job_name}.out  #puts the slurm output into this file
+    err_file=./logs/${job_name}.err  #error output from slurm goes here
+    sbatch_file=tangle/cellNc.sbatch  #The way this is written this file should be the same every time you run
+    export stripe
+    printf "| Submitting :: %10s | %10s | %10s | %10s |" \
+	${job_name} ${out_file} ${err_file} ${sbatch_file}
+    sbatch --job-name=${job_name} --output=${out_file} --error=${err_file} ${sbatch_file}
+done
+
+
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+| Submitting ::   job name | output file | error file | sbatch file | job id |
+| Submitting :: cellNc.r.6 | ./logs/cellNc.r.6.out | ./logs/cellNc.r.6.err | tangle/cellNc.sbatch |Submitted batch job 4224969
+| Submitting :: cellNc.r.11 | ./logs/cellNc.r.11.out | ./logs/cellNc.r.11.err | tangle/cellNc.sbatch |Submitted batch job 4224970
+| Submitting :: cellNc.r.13 | ./logs/cellNc.r.13.out | ./logs/cellNc.r.13.err | tangle/cellNc.sbatch |Submitted batch job 4224971
+| Submitting :: cellNc.r.15 | ./logs/cellNc.r.15.out | ./logs/cellNc.r.15.err | tangle/cellNc.sbatch |Submitted batch job 4224972
+| Submitting :: cellNc.r.17 | ./logs/cellNc.r.17.out | ./logs/cellNc.r.17.err | tangle/cellNc.sbatch |Submitted batch job 4224973
+| Submitting :: cellNc.r.18 | ./logs/cellNc.r.18.out | ./logs/cellNc.r.18.err | tangle/cellNc.sbatch |Submitted batch job 4224974
+| Submitting :: cellNc.r.23 | ./logs/cellNc.r.23.out | ./logs/cellNc.r.23.err | tangle/cellNc.sbatch |Submitted batch job 4224975
+| Submitting :: cellNc.r.25 | ./logs/cellNc.r.25.out | ./logs/cellNc.r.25.err | tangle/cellNc.sbatch |Submitted batch job 4224976
+| Submitting :: cellNc.r.26 | ./logs/cellNc.r.26.out | ./logs/cellNc.r.26.err | tangle/cellNc.sbatch |Submitted batch job 4224977
+| Submitting :: cellNc.r.33 | ./logs/cellNc.r.33.out | ./logs/cellNc.r.33.err | tangle/cellNc.sbatch |Submitted batch job 4224978
+| Submitting :: cellNc.r.35 | ./logs/cellNc.r.35.out | ./logs/cellNc.r.35.err | tangle/cellNc.sbatch |Submitted batch job 4224979
+| Submitting :: cellNc.r.53 | ./logs/cellNc.r.53.out | ./logs/cellNc.r.53.err | tangle/cellNc.sbatch |Submitted batch job 4224980
+| Submitting :: cellNc.r.54 | ./logs/cellNc.r.54.out | ./logs/cellNc.r.54.err | tangle/cellNc.sbatch |Submitted batch job 4224981
+| Submitting :: cellNc.r.56 | ./logs/cellNc.r.56.out | ./logs/cellNc.r.56.err | tangle/cellNc.sbatch |Submitted batch job 4224982
+#+end_example
+
+
+#+BEGIN_SRC sh :session :results silent
+  scancel -u nbest -p bigmem
+#+END_SRC
+
+#+BEGIN_SRC sh :session :results raw
+  grep -l Error logs/*.out
+#+END_SRC
+
+#+BEGIN_SRC sh :session
+  find data/psims/ -type f | wc -l
+#+END_SRC
+
+#+RESULTS:
+: 33284
+
