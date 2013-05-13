@@ -37,9 +37,9 @@ description file.
   gridtype = lonlat 
   xsize    =  720
   ysize    =  254
-  xfirst   = -179.5
+  xfirst   = -179.75
   xinc     =    0.5
-  yfirst   =  -59.5
+  yfirst   =  -59.75
   yinc     =    0.5
   EOF
   cat global_30min.grid
@@ -49,9 +49,9 @@ description file.
 : gridtype = lonlat 
 : xsize    =  720
 : ysize    =  254
-: xfirst   = -179.5
+: xfirst   = -179.75
 : xinc     =    0.5
-: yfirst   =  -59.5
+: yfirst   =  -59.75
 : yinc     =    0.5
 
 This will be used to resample the input data.
@@ -74,41 +74,85 @@ This will be used to resample the input data.
 #+END_SRC
 
 #+BEGIN_SRC R
+  library( stringr)
   library( doMC)
   registerDoMC( 4)
   
   <<watchVars>>
   
+  watchInput <-
+    list.files(
+      path= "data/input",
+      pattern= sprintf(
+        "^(%s)",
+        paste( watchVars, collapse= "|")),
+      full.names= TRUE)
+  
   cdoCommands <-
     sprintf(
       paste(
-        "cdo -O -f nc4 -z zip mergetime",
-        "data/input/%1$s_watch_*",
-        "data/output/%1$s_watch_1958-2001.nc4 &&",
-        "cdo -O -f nc4 -z zip remapnn,global_30min.grid",
-        "data/output/%1$s_watch_1958-2001.nc4",
-        "data/output/%1$s_watch_1958-2001_30min.nc4",
+        "cdo -O -f nc4 -z zip splityear %s",
+        "data/output/%s_watch_",
         "2>&1"),
-      watchVars)
-  names( cdoCommands) <- watchVars
+      watchInput,
+      str_match( watchInput, "data/input/([a-z]+_?[a-z]*)_watch")[,2])
+  
+  annualFiles <-
+    list.files(
+      path= "data/output",
+      pattern= "^.+_watch_[0-9]{4}.nc4$",
+      full.names= TRUE)
+  
+  annualFiles30min <-
+    str_replace( annualFiles, "\\.nc4$", "_30min.nc4")
+  
+  cdoRemapCommands <-
+    paste(
+      "cdo -O -f nc4 -z zip remapnn,global_30min.grid",
+      annualFiles,
+      annualFiles30min,
+      "2>&1")
+  
+  ## watchVars)
+  ## names( cdoCommands) <- watchVars
 #+END_SRC
 
 #+BEGIN_SRC R :results value replace
-  cdoCommands
+  head( cdoCommands)
 #+END_SRC
 
 #+RESULTS:
-| cdo -O -f nc4 -z zip mergetime data/input/pr_gpcc_watch_* data/output/pr_gpcc_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1958-2001.nc4 data/output/pr_gpcc_watch_1958-2001_30min.nc4 2>&1 |
-| cdo -O -f nc4 -z zip mergetime data/input/rsds_watch_* data/output/rsds_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/rsds_watch_1958-2001.nc4 data/output/rsds_watch_1958-2001_30min.nc4 2>&1             |
-| cdo -O -f nc4 -z zip mergetime data/input/tasmax_watch_* data/output/tasmax_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/tasmax_watch_1958-2001.nc4 data/output/tasmax_watch_1958-2001_30min.nc4 2>&1     |
-| cdo -O -f nc4 -z zip mergetime data/input/tasmin_watch_* data/output/tasmin_watch_1958-2001.nc4 && cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/tasmin_watch_1958-2001.nc4 data/output/tasmin_watch_1958-2001_30min.nc4 2>&1     |
+| cdo -O -f nc4 -z zip splityear data/input/pr_gpcc_watch_1958-1959.nc4 data/output/pr_gpcc_watch_ 2>&1 |
+| cdo -O -f nc4 -z zip splityear data/input/pr_gpcc_watch_1960-1969.nc4 data/output/pr_gpcc_watch_ 2>&1 |
+| cdo -O -f nc4 -z zip splityear data/input/pr_gpcc_watch_1970-1979.nc4 data/output/pr_gpcc_watch_ 2>&1 |
+| cdo -O -f nc4 -z zip splityear data/input/pr_gpcc_watch_1980-1989.nc4 data/output/pr_gpcc_watch_ 2>&1 |
+| cdo -O -f nc4 -z zip splityear data/input/pr_gpcc_watch_1990-1999.nc4 data/output/pr_gpcc_watch_ 2>&1 |
+| cdo -O -f nc4 -z zip splityear data/input/pr_gpcc_watch_2000-2001.nc4 data/output/pr_gpcc_watch_ 2>&1 |
 
-#+BEGIN_SRC R
+#+BEGIN_SRC R :results value replace
+  head( cdoRemapCommands)
+#+END_SRC
+
+#+RESULTS:
+| cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1958.nc4 data/output/pr_gpcc_watch_1958_30min.nc4 2>&1 |
+| cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1959.nc4 data/output/pr_gpcc_watch_1959_30min.nc4 2>&1 |
+| cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1960.nc4 data/output/pr_gpcc_watch_1960_30min.nc4 2>&1 |
+| cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1961.nc4 data/output/pr_gpcc_watch_1961_30min.nc4 2>&1 |
+| cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1962.nc4 data/output/pr_gpcc_watch_1962_30min.nc4 2>&1 |
+| cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1963.nc4 data/output/pr_gpcc_watch_1963_30min.nc4 2>&1 |
+
+#+BEGIN_SRC R :results silent
   cdoOutput <- 
     foreach( cdo= cdoCommands) %dopar% {
       system( cdo, intern= TRUE)
     }
-  names( cdoOutput) <- watchVars
+#+END_SRC
+
+#+BEGIN_SRC R :results silent
+  cdoOutput <- 
+    foreach( cdo= cdoRemapCommands) %dopar% {
+      system( cdo, intern= TRUE)
+    }
 #+END_SRC
 
 #+BEGIN_SRC R :results value replace
@@ -131,7 +175,7 @@ This will be used to resample the input data.
       -a_ullr -180 67 180 -60 \
       -a_nodata 255 \
       -scale 0 1 1 1 \
-      data/output/pr_gpcc_watch_1958-2001_30min.nc4 \
+      data/output/pr_gpcc_watch_1958_30min.nc4 \
       data/output/watchMask30min.tif
 #+END_SRC
 
@@ -173,8 +217,8 @@ Metadata:
   NC_GLOBAL#CDO=Climate Data Operators version 1.5.9rc1 (http://code.zmaw.de/projects/cdo)
   NC_GLOBAL#comment=WATCH Forcing Data converted for ISI-MIP use by M.Buechner (buechner@pik-potsdam.de)
   NC_GLOBAL#Conventions=CF-1.0
-  NC_GLOBAL#history=Wed May 01 16:08:31 2013: cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1958-2001.nc4 data/output/pr_gpcc_watch_1958-2001_30min.nc4
-Wed May 01 16:00:33 2013: cdo -O -f nc4 -z zip mergetime data/input/pr_gpcc_watch_1958-1959.nc4 data/input/pr_gpcc_watch_1960-1969.nc4 data/input/pr_gpcc_watch_1970-1979.nc4 data/input/pr_gpcc_watch_1980-1989.nc4 data/input/pr_gpcc_watch_1990-1999.nc4 data/input/pr_gpcc_watch_2000-2001.nc4 data/output/pr_gpcc_watch_1958-2001.nc4
+  NC_GLOBAL#history=Wed May 08 22:26:11 2013: cdo -O -f nc4 -z zip remapnn,global_30min.grid data/output/pr_gpcc_watch_1958.nc4 data/output/pr_gpcc_watch_1958_30min.nc4
+Wed May 08 10:21:34 2013: cdo -O -f nc4 -z zip splityear data/input/pr_gpcc_watch_1958-1959.nc4 data/output/pr_gpcc_watch_
   pr#_FillValue=1e+20
   pr#code=1
   pr#long_name=precipitation flux
@@ -272,7 +316,7 @@ Band 1 Block=720x11 Type=Byte, ColorInterp=Gray
   ## --interactive
   
   stripe <- as.integer( argv[ 1])
-  ## stripe <- 1
+  years <- 1958:2001
   
   library( ncdf4)
   library( raster)
@@ -281,8 +325,7 @@ Band 1 Block=720x11 Type=Byte, ColorInterp=Gray
   options( asciiType= "org")
   
   library( doMC)  
-  ## registerDoMC( multicore:::detectCores())
-  registerDoMC( 8)
+  registerDoMC( multicore:::detectCores())
   
   ## options( error= recover)
   
@@ -316,13 +359,15 @@ Band 1 Block=720x11 Type=Byte, ColorInterp=Gray
   
   <<watchMask>>
     
-  watchAnchorPoints <-
+  watchAnchorPoints <- {
+    watchRes <- res( watchMask)[ 1]
     cbind(
       lon= seq(
-        from= xmin( watchMask),
-        to= xmax( watchMask)- res( watchMask)[1],
-        by= 1), ## res( watchMask)[1] * 10),
+        from= xmin( watchMask) + watchRes / 2,
+        to= xmax( watchMask) - watchRes / 2,
+        by= 3), 
       lat= ymax( watchMask))
+  }
 #+END_SRC
 
 #+BEGIN_SRC R :tangle :results raw output
@@ -331,28 +376,47 @@ Band 1 Block=720x11 Type=Byte, ColorInterp=Gray
 
 #+RESULTS:
 |      lon |    lat |
-| -180.000 | 67.000 |
-| -179.000 | 67.000 |
-| -178.000 | 67.000 |
-| -177.000 | 67.000 |
-| -176.000 | 67.000 |
-| -175.000 | 67.000 |
+| -179.750 | 67.000 |
+| -176.750 | 67.000 |
+| -173.750 | 67.000 |
+| -170.750 | 67.000 |
+| -167.750 | 67.000 |
+| -164.750 | 67.000 |
 
+#+BEGIN_SRC R :tangle :results raw output
+  ascii( tail( watchAnchorPoints), digits=3, include.colnames= TRUE)
+#+END_SRC
+
+#+RESULTS:
+|     lon |    lat |
+| 162.250 | 67.000 |
+| 165.250 | 67.000 |
+| 168.250 | 67.000 |
+| 171.250 | 67.000 |
+| 174.250 | 67.000 |
+| 177.250 | 67.000 |
+
+#+BEGIN_SRC R :tangle :results value
+  nrow( watchAnchorPoints)
+#+END_SRC
+
+#+RESULTS:
+: 120
 
 *** readWatchValues() reads in all data for a stripe
 
 Given the stripe's corner in lon,lat and a width in cells.
 
 #+BEGIN_SRC R :results silent
-  readWatchValues <- function(  xy, var= "tmin", n= 10) {
-    ncFn <- sprintf( "data/output/%s_watch_1958-2001_30min.nc4", watchVars[ var])
+  readWatchValues <- function(  xy, var= "tmin", year= 1958, n= 6) {
+    ncFn <- sprintf( "data/output/%s_watch_%s_30min.nc4", watchVars[ var], year)
     nc <- nc_open( ncFn)
     ## r <- raster( ncFn, band= 1)
-    r <- raster( watchMask)
+    ## r <- raster( watchMask)
     column <-
       rowColFromCell(
-        r, cellFromXY(
-          r, xy= xy))[ 2]
+        watchMask, cellFromXY(
+          watchMask, xy= xy))[ 2]
     m <-
       ncvar_get(
         nc,
@@ -380,36 +444,39 @@ Given the stripe's corner in lon,lat and a width in cells.
 
 *** Read in values for a single stripe
 
+#+BEGIN_SRC R :tangle no :results silent
+  stripe <- 1
+  registerDoMC( 8)
+  years <- 1958:2001
+#+END_SRC
+
 #+BEGIN_SRC R :results output
   
   ## cat( sprintf( "Time to load data for stripe %d:", stripe))
   
   ## system.time( {
   
-    watchValues <-
-      foreach(
-        var= names( watchVars)
-        ## var= "tmin",
-        ## .inorder= TRUE) %:%
-        ##   foreach(
-        ##     year= years,
-        ## .combine= abind,
-        ##.multicombine= TRUE
-        ) %dopar% {
-          readWatchValues( watchAnchorPoints[ stripe,], var= var)
-        }
-    names( watchValues) <- names( watchVars)
-    for( var in names( watchVars))
-      names( dimnames( watchValues[[ var]])) <-
-        c( "longitude", "latitude", "time")
+  watchValues <-
+    foreach(
+      var= names( watchVars)) %:%
+    ## var= "tmin",
+    ## .inorder= TRUE) %:%
+    foreach(
+      year= years,
+      .combine= abind,
+      .multicombine= TRUE ) %dopar% {
+        readWatchValues( watchAnchorPoints[ stripe,], var= var, year= year)
+      }
+  names( watchValues) <- names( watchVars)
+  for( var in names( watchVars))
+    names( dimnames( watchValues[[ var]])) <-
+    c( "longitude", "latitude", "time")
   
   ## })
   
 #+END_SRC
 
 #+RESULTS:
-:    user  system elapsed 
-: 327.331  28.770 152.561
 
 
 *** these functions are used to set up the .psims.nc4 files 
@@ -500,7 +567,7 @@ Given the stripe's corner in lon,lat and a width in cells.
     world <- raster()
     res( world) <- resWorld
     rowCol <- as.list( rowColFromCell( world, cellFromXY( world, xy))[1,])
-    ncFile <- sprintf( "data/psims/%1$d/%2$d/%1$d_%2$d.psims.nc4", rowCol$row, rowCol$col)
+    ncFile <- sprintf( "data/psims/%1$03d/%2$03d/%1$03d_%2$03d.psims.nc4", rowCol$row, rowCol$col)
     if( !file.exists( dirname( ncFile))) {
       dir.create( path= dirname( ncFile), recursive= TRUE)
     }
@@ -539,7 +606,7 @@ to the .psims.nc4 file
     xy <- c(
       lon= as.numeric( dimnames( watchValues[[ "tmin"]])$longitude[ col]),
       lat= as.numeric( dimnames( watchValues[[ "tmin"]])$latitude[  row]))
-    if( !is.na( extract( watchMask, rbind( xy)))) return( NA)
+    if( is.na( extract( watchMask, rbind( xy)))) return( NA)
     psimsNc <- psimsNcFromXY(
       xy, ncDays= as.integer( dimnames( watchValues[[ "tmin"]])$time))
     for( var in names( watchValues)) {
@@ -548,7 +615,7 @@ to the .psims.nc4 file
           solar= vals *86400 /1000000, # Change units to MJ /m^2 /day
           tmin= vals -273.15,          # change K to C
           tmax= vals -273.15,
-          precip= vals)
+          precip= vals *3600 *24)      # Change mm/s to mm/day
       ## browser()
       ncvar_put(
         nc= psimsNc,
@@ -572,7 +639,7 @@ Write a .psims.nc4 file for each grid cell in the mask.
   ##   system.time(
   
   psimsNcFile <-
-    foreach( col= 1:10, .combine= c) %:%
+    foreach( col= 1:6, .combine= c) %:%
     foreach( row= 1:254, .combine= c) %dopar% {
       writePsimsNc( watchValues, col, row)
     }
@@ -596,8 +663,8 @@ Write a .psims.nc4 file for each grid cell in the mask.
 
 #SBATCH --account=pi-joshuaelliott
 #SBATCH --qos=normal
-#SBATCH --partition=bigmem
-# #SBATCH --partition=westmere,sandyb
+# #SBATCH --partition=bigmem
+#SBATCH --partition=westmere,sandyb
 # #SBATCH --partition=sandyb
 #SBATCH --time=60  # max minutes per run, will help the scheduler to get your job to run faster
 #SBATCH --exclusive
@@ -618,13 +685,12 @@ echo "ended at $END"
 
 printf "| Submitting :: %10s | %+10s | %10s | %10s | %s |\n"\
   "job name" "output file" "error file" "sbatch file" "job id"
-# for stripe in {3..72};
+for stripe in {1..120};
 # for stripe in {1..2};
-for stripe in 6 11 13 15 17 18 23 25 26 33 35 53 54 56; 
 do
-    job_name="cellNc.r.${stripe}"  #name I came up with
-    out_file=./logs/${job_name}.out  #puts the slurm output into this file
-    err_file=./logs/${job_name}.err  #error output from slurm goes here
+    job_name="cellNc.r"  #name I came up with
+    out_file=./logs/${job_name}.${stripe}.out  #puts the slurm output into this file
+    err_file=./logs/${job_name}.${stripe}.err  #error output from slurm goes here
     sbatch_file=tangle/cellNc.sbatch  #The way this is written this file should be the same every time you run
     export stripe
     printf "| Submitting :: %10s | %10s | %10s | %10s |" \
@@ -638,25 +704,131 @@ done
 #+RESULTS:
 #+begin_example
 | Submitting ::   job name | output file | error file | sbatch file | job id |
-| Submitting :: cellNc.r.6 | ./logs/cellNc.r.6.out | ./logs/cellNc.r.6.err | tangle/cellNc.sbatch |Submitted batch job 4224969
-| Submitting :: cellNc.r.11 | ./logs/cellNc.r.11.out | ./logs/cellNc.r.11.err | tangle/cellNc.sbatch |Submitted batch job 4224970
-| Submitting :: cellNc.r.13 | ./logs/cellNc.r.13.out | ./logs/cellNc.r.13.err | tangle/cellNc.sbatch |Submitted batch job 4224971
-| Submitting :: cellNc.r.15 | ./logs/cellNc.r.15.out | ./logs/cellNc.r.15.err | tangle/cellNc.sbatch |Submitted batch job 4224972
-| Submitting :: cellNc.r.17 | ./logs/cellNc.r.17.out | ./logs/cellNc.r.17.err | tangle/cellNc.sbatch |Submitted batch job 4224973
-| Submitting :: cellNc.r.18 | ./logs/cellNc.r.18.out | ./logs/cellNc.r.18.err | tangle/cellNc.sbatch |Submitted batch job 4224974
-| Submitting :: cellNc.r.23 | ./logs/cellNc.r.23.out | ./logs/cellNc.r.23.err | tangle/cellNc.sbatch |Submitted batch job 4224975
-| Submitting :: cellNc.r.25 | ./logs/cellNc.r.25.out | ./logs/cellNc.r.25.err | tangle/cellNc.sbatch |Submitted batch job 4224976
-| Submitting :: cellNc.r.26 | ./logs/cellNc.r.26.out | ./logs/cellNc.r.26.err | tangle/cellNc.sbatch |Submitted batch job 4224977
-| Submitting :: cellNc.r.33 | ./logs/cellNc.r.33.out | ./logs/cellNc.r.33.err | tangle/cellNc.sbatch |Submitted batch job 4224978
-| Submitting :: cellNc.r.35 | ./logs/cellNc.r.35.out | ./logs/cellNc.r.35.err | tangle/cellNc.sbatch |Submitted batch job 4224979
-| Submitting :: cellNc.r.53 | ./logs/cellNc.r.53.out | ./logs/cellNc.r.53.err | tangle/cellNc.sbatch |Submitted batch job 4224980
-| Submitting :: cellNc.r.54 | ./logs/cellNc.r.54.out | ./logs/cellNc.r.54.err | tangle/cellNc.sbatch |Submitted batch job 4224981
-| Submitting :: cellNc.r.56 | ./logs/cellNc.r.56.out | ./logs/cellNc.r.56.err | tangle/cellNc.sbatch |Submitted batch job 4224982
+| Submitting ::   cellNc.r | ./logs/cellNc.r.1.out | ./logs/cellNc.r.1.err | tangle/cellNc.sbatch |Submitted batch job 4229821
+| Submitting ::   cellNc.r | ./logs/cellNc.r.2.out | ./logs/cellNc.r.2.err | tangle/cellNc.sbatch |Submitted batch job 4229822
+| Submitting ::   cellNc.r | ./logs/cellNc.r.3.out | ./logs/cellNc.r.3.err | tangle/cellNc.sbatch |Submitted batch job 4229823
+| Submitting ::   cellNc.r | ./logs/cellNc.r.4.out | ./logs/cellNc.r.4.err | tangle/cellNc.sbatch |Submitted batch job 4229824
+| Submitting ::   cellNc.r | ./logs/cellNc.r.5.out | ./logs/cellNc.r.5.err | tangle/cellNc.sbatch |Submitted batch job 4229825
+| Submitting ::   cellNc.r | ./logs/cellNc.r.6.out | ./logs/cellNc.r.6.err | tangle/cellNc.sbatch |Submitted batch job 4229826
+| Submitting ::   cellNc.r | ./logs/cellNc.r.7.out | ./logs/cellNc.r.7.err | tangle/cellNc.sbatch |Submitted batch job 4229827
+| Submitting ::   cellNc.r | ./logs/cellNc.r.8.out | ./logs/cellNc.r.8.err | tangle/cellNc.sbatch |Submitted batch job 4229828
+| Submitting ::   cellNc.r | ./logs/cellNc.r.9.out | ./logs/cellNc.r.9.err | tangle/cellNc.sbatch |Submitted batch job 4229829
+| Submitting ::   cellNc.r | ./logs/cellNc.r.10.out | ./logs/cellNc.r.10.err | tangle/cellNc.sbatch |Submitted batch job 4229830
+| Submitting ::   cellNc.r | ./logs/cellNc.r.11.out | ./logs/cellNc.r.11.err | tangle/cellNc.sbatch |Submitted batch job 4229831
+| Submitting ::   cellNc.r | ./logs/cellNc.r.12.out | ./logs/cellNc.r.12.err | tangle/cellNc.sbatch |Submitted batch job 4229832
+| Submitting ::   cellNc.r | ./logs/cellNc.r.13.out | ./logs/cellNc.r.13.err | tangle/cellNc.sbatch |Submitted batch job 4229833
+| Submitting ::   cellNc.r | ./logs/cellNc.r.14.out | ./logs/cellNc.r.14.err | tangle/cellNc.sbatch |Submitted batch job 4229834
+| Submitting ::   cellNc.r | ./logs/cellNc.r.15.out | ./logs/cellNc.r.15.err | tangle/cellNc.sbatch |Submitted batch job 4229835
+| Submitting ::   cellNc.r | ./logs/cellNc.r.16.out | ./logs/cellNc.r.16.err | tangle/cellNc.sbatch |Submitted batch job 4229836
+| Submitting ::   cellNc.r | ./logs/cellNc.r.17.out | ./logs/cellNc.r.17.err | tangle/cellNc.sbatch |Submitted batch job 4229837
+| Submitting ::   cellNc.r | ./logs/cellNc.r.18.out | ./logs/cellNc.r.18.err | tangle/cellNc.sbatch |Submitted batch job 4229838
+| Submitting ::   cellNc.r | ./logs/cellNc.r.19.out | ./logs/cellNc.r.19.err | tangle/cellNc.sbatch |Submitted batch job 4229839
+| Submitting ::   cellNc.r | ./logs/cellNc.r.20.out | ./logs/cellNc.r.20.err | tangle/cellNc.sbatch |Submitted batch job 4229840
+| Submitting ::   cellNc.r | ./logs/cellNc.r.21.out | ./logs/cellNc.r.21.err | tangle/cellNc.sbatch |Submitted batch job 4229841
+| Submitting ::   cellNc.r | ./logs/cellNc.r.22.out | ./logs/cellNc.r.22.err | tangle/cellNc.sbatch |Submitted batch job 4229842
+| Submitting ::   cellNc.r | ./logs/cellNc.r.23.out | ./logs/cellNc.r.23.err | tangle/cellNc.sbatch |Submitted batch job 4229843
+| Submitting ::   cellNc.r | ./logs/cellNc.r.24.out | ./logs/cellNc.r.24.err | tangle/cellNc.sbatch |Submitted batch job 4229844
+| Submitting ::   cellNc.r | ./logs/cellNc.r.25.out | ./logs/cellNc.r.25.err | tangle/cellNc.sbatch |Submitted batch job 4229845
+| Submitting ::   cellNc.r | ./logs/cellNc.r.26.out | ./logs/cellNc.r.26.err | tangle/cellNc.sbatch |Submitted batch job 4229846
+| Submitting ::   cellNc.r | ./logs/cellNc.r.27.out | ./logs/cellNc.r.27.err | tangle/cellNc.sbatch |Submitted batch job 4229847
+| Submitting ::   cellNc.r | ./logs/cellNc.r.28.out | ./logs/cellNc.r.28.err | tangle/cellNc.sbatch |Submitted batch job 4229848
+| Submitting ::   cellNc.r | ./logs/cellNc.r.29.out | ./logs/cellNc.r.29.err | tangle/cellNc.sbatch |Submitted batch job 4229849
+| Submitting ::   cellNc.r | ./logs/cellNc.r.30.out | ./logs/cellNc.r.30.err | tangle/cellNc.sbatch |Submitted batch job 4229850
+| Submitting ::   cellNc.r | ./logs/cellNc.r.31.out | ./logs/cellNc.r.31.err | tangle/cellNc.sbatch |Submitted batch job 4229851
+| Submitting ::   cellNc.r | ./logs/cellNc.r.32.out | ./logs/cellNc.r.32.err | tangle/cellNc.sbatch |Submitted batch job 4229852
+| Submitting ::   cellNc.r | ./logs/cellNc.r.33.out | ./logs/cellNc.r.33.err | tangle/cellNc.sbatch |Submitted batch job 4229853
+| Submitting ::   cellNc.r | ./logs/cellNc.r.34.out | ./logs/cellNc.r.34.err | tangle/cellNc.sbatch |Submitted batch job 4229854
+| Submitting ::   cellNc.r | ./logs/cellNc.r.35.out | ./logs/cellNc.r.35.err | tangle/cellNc.sbatch |Submitted batch job 4229855
+| Submitting ::   cellNc.r | ./logs/cellNc.r.36.out | ./logs/cellNc.r.36.err | tangle/cellNc.sbatch |Submitted batch job 4229856
+| Submitting ::   cellNc.r | ./logs/cellNc.r.37.out | ./logs/cellNc.r.37.err | tangle/cellNc.sbatch |Submitted batch job 4229857
+| Submitting ::   cellNc.r | ./logs/cellNc.r.38.out | ./logs/cellNc.r.38.err | tangle/cellNc.sbatch |Submitted batch job 4229858
+| Submitting ::   cellNc.r | ./logs/cellNc.r.39.out | ./logs/cellNc.r.39.err | tangle/cellNc.sbatch |Submitted batch job 4229859
+| Submitting ::   cellNc.r | ./logs/cellNc.r.40.out | ./logs/cellNc.r.40.err | tangle/cellNc.sbatch |Submitted batch job 4229860
+| Submitting ::   cellNc.r | ./logs/cellNc.r.41.out | ./logs/cellNc.r.41.err | tangle/cellNc.sbatch |Submitted batch job 4229861
+| Submitting ::   cellNc.r | ./logs/cellNc.r.42.out | ./logs/cellNc.r.42.err | tangle/cellNc.sbatch |Submitted batch job 4229862
+| Submitting ::   cellNc.r | ./logs/cellNc.r.43.out | ./logs/cellNc.r.43.err | tangle/cellNc.sbatch |Submitted batch job 4229863
+| Submitting ::   cellNc.r | ./logs/cellNc.r.44.out | ./logs/cellNc.r.44.err | tangle/cellNc.sbatch |Submitted batch job 4229864
+| Submitting ::   cellNc.r | ./logs/cellNc.r.45.out | ./logs/cellNc.r.45.err | tangle/cellNc.sbatch |Submitted batch job 4229865
+| Submitting ::   cellNc.r | ./logs/cellNc.r.46.out | ./logs/cellNc.r.46.err | tangle/cellNc.sbatch |Submitted batch job 4229866
+| Submitting ::   cellNc.r | ./logs/cellNc.r.47.out | ./logs/cellNc.r.47.err | tangle/cellNc.sbatch |Submitted batch job 4229867
+| Submitting ::   cellNc.r | ./logs/cellNc.r.48.out | ./logs/cellNc.r.48.err | tangle/cellNc.sbatch |Submitted batch job 4229868
+| Submitting ::   cellNc.r | ./logs/cellNc.r.49.out | ./logs/cellNc.r.49.err | tangle/cellNc.sbatch |Submitted batch job 4229869
+| Submitting ::   cellNc.r | ./logs/cellNc.r.50.out | ./logs/cellNc.r.50.err | tangle/cellNc.sbatch |Submitted batch job 4229870
+| Submitting ::   cellNc.r | ./logs/cellNc.r.51.out | ./logs/cellNc.r.51.err | tangle/cellNc.sbatch |Submitted batch job 4229871
+| Submitting ::   cellNc.r | ./logs/cellNc.r.52.out | ./logs/cellNc.r.52.err | tangle/cellNc.sbatch |Submitted batch job 4229872
+| Submitting ::   cellNc.r | ./logs/cellNc.r.53.out | ./logs/cellNc.r.53.err | tangle/cellNc.sbatch |Submitted batch job 4229873
+| Submitting ::   cellNc.r | ./logs/cellNc.r.54.out | ./logs/cellNc.r.54.err | tangle/cellNc.sbatch |Submitted batch job 4229874
+| Submitting ::   cellNc.r | ./logs/cellNc.r.55.out | ./logs/cellNc.r.55.err | tangle/cellNc.sbatch |Submitted batch job 4229875
+| Submitting ::   cellNc.r | ./logs/cellNc.r.56.out | ./logs/cellNc.r.56.err | tangle/cellNc.sbatch |Submitted batch job 4229876
+| Submitting ::   cellNc.r | ./logs/cellNc.r.57.out | ./logs/cellNc.r.57.err | tangle/cellNc.sbatch |Submitted batch job 4229877
+| Submitting ::   cellNc.r | ./logs/cellNc.r.58.out | ./logs/cellNc.r.58.err | tangle/cellNc.sbatch |Submitted batch job 4229878
+| Submitting ::   cellNc.r | ./logs/cellNc.r.59.out | ./logs/cellNc.r.59.err | tangle/cellNc.sbatch |Submitted batch job 4229879
+| Submitting ::   cellNc.r | ./logs/cellNc.r.60.out | ./logs/cellNc.r.60.err | tangle/cellNc.sbatch |Submitted batch job 4229880
+| Submitting ::   cellNc.r | ./logs/cellNc.r.61.out | ./logs/cellNc.r.61.err | tangle/cellNc.sbatch |Submitted batch job 4229881
+| Submitting ::   cellNc.r | ./logs/cellNc.r.62.out | ./logs/cellNc.r.62.err | tangle/cellNc.sbatch |Submitted batch job 4229882
+| Submitting ::   cellNc.r | ./logs/cellNc.r.63.out | ./logs/cellNc.r.63.err | tangle/cellNc.sbatch |Submitted batch job 4229883
+| Submitting ::   cellNc.r | ./logs/cellNc.r.64.out | ./logs/cellNc.r.64.err | tangle/cellNc.sbatch |Submitted batch job 4229884
+| Submitting ::   cellNc.r | ./logs/cellNc.r.65.out | ./logs/cellNc.r.65.err | tangle/cellNc.sbatch |Submitted batch job 4229885
+| Submitting ::   cellNc.r | ./logs/cellNc.r.66.out | ./logs/cellNc.r.66.err | tangle/cellNc.sbatch |Submitted batch job 4229886
+| Submitting ::   cellNc.r | ./logs/cellNc.r.67.out | ./logs/cellNc.r.67.err | tangle/cellNc.sbatch |Submitted batch job 4229887
+| Submitting ::   cellNc.r | ./logs/cellNc.r.68.out | ./logs/cellNc.r.68.err | tangle/cellNc.sbatch |Submitted batch job 4229888
+| Submitting ::   cellNc.r | ./logs/cellNc.r.69.out | ./logs/cellNc.r.69.err | tangle/cellNc.sbatch |Submitted batch job 4229889
+| Submitting ::   cellNc.r | ./logs/cellNc.r.70.out | ./logs/cellNc.r.70.err | tangle/cellNc.sbatch |Submitted batch job 4229890
+| Submitting ::   cellNc.r | ./logs/cellNc.r.71.out | ./logs/cellNc.r.71.err | tangle/cellNc.sbatch |Submitted batch job 4229891
+| Submitting ::   cellNc.r | ./logs/cellNc.r.72.out | ./logs/cellNc.r.72.err | tangle/cellNc.sbatch |Submitted batch job 4229892
+| Submitting ::   cellNc.r | ./logs/cellNc.r.73.out | ./logs/cellNc.r.73.err | tangle/cellNc.sbatch |Submitted batch job 4229893
+| Submitting ::   cellNc.r | ./logs/cellNc.r.74.out | ./logs/cellNc.r.74.err | tangle/cellNc.sbatch |Submitted batch job 4229894
+| Submitting ::   cellNc.r | ./logs/cellNc.r.75.out | ./logs/cellNc.r.75.err | tangle/cellNc.sbatch |Submitted batch job 4229895
+| Submitting ::   cellNc.r | ./logs/cellNc.r.76.out | ./logs/cellNc.r.76.err | tangle/cellNc.sbatch |Submitted batch job 4229896
+| Submitting ::   cellNc.r | ./logs/cellNc.r.77.out | ./logs/cellNc.r.77.err | tangle/cellNc.sbatch |Submitted batch job 4229897
+| Submitting ::   cellNc.r | ./logs/cellNc.r.78.out | ./logs/cellNc.r.78.err | tangle/cellNc.sbatch |Submitted batch job 4229898
+| Submitting ::   cellNc.r | ./logs/cellNc.r.79.out | ./logs/cellNc.r.79.err | tangle/cellNc.sbatch |Submitted batch job 4229899
+| Submitting ::   cellNc.r | ./logs/cellNc.r.80.out | ./logs/cellNc.r.80.err | tangle/cellNc.sbatch |Submitted batch job 4229900
+| Submitting ::   cellNc.r | ./logs/cellNc.r.81.out | ./logs/cellNc.r.81.err | tangle/cellNc.sbatch |Submitted batch job 4229901
+| Submitting ::   cellNc.r | ./logs/cellNc.r.82.out | ./logs/cellNc.r.82.err | tangle/cellNc.sbatch |Submitted batch job 4229902
+| Submitting ::   cellNc.r | ./logs/cellNc.r.83.out | ./logs/cellNc.r.83.err | tangle/cellNc.sbatch |Submitted batch job 4229903
+| Submitting ::   cellNc.r | ./logs/cellNc.r.84.out | ./logs/cellNc.r.84.err | tangle/cellNc.sbatch |Submitted batch job 4229904
+| Submitting ::   cellNc.r | ./logs/cellNc.r.85.out | ./logs/cellNc.r.85.err | tangle/cellNc.sbatch |Submitted batch job 4229905
+| Submitting ::   cellNc.r | ./logs/cellNc.r.86.out | ./logs/cellNc.r.86.err | tangle/cellNc.sbatch |Submitted batch job 4229906
+| Submitting ::   cellNc.r | ./logs/cellNc.r.87.out | ./logs/cellNc.r.87.err | tangle/cellNc.sbatch |Submitted batch job 4229907
+| Submitting ::   cellNc.r | ./logs/cellNc.r.88.out | ./logs/cellNc.r.88.err | tangle/cellNc.sbatch |Submitted batch job 4229908
+| Submitting ::   cellNc.r | ./logs/cellNc.r.89.out | ./logs/cellNc.r.89.err | tangle/cellNc.sbatch |Submitted batch job 4229909
+| Submitting ::   cellNc.r | ./logs/cellNc.r.90.out | ./logs/cellNc.r.90.err | tangle/cellNc.sbatch |Submitted batch job 4229910
+| Submitting ::   cellNc.r | ./logs/cellNc.r.91.out | ./logs/cellNc.r.91.err | tangle/cellNc.sbatch |Submitted batch job 4229911
+| Submitting ::   cellNc.r | ./logs/cellNc.r.92.out | ./logs/cellNc.r.92.err | tangle/cellNc.sbatch |Submitted batch job 4229912
+| Submitting ::   cellNc.r | ./logs/cellNc.r.93.out | ./logs/cellNc.r.93.err | tangle/cellNc.sbatch |Submitted batch job 4229913
+| Submitting ::   cellNc.r | ./logs/cellNc.r.94.out | ./logs/cellNc.r.94.err | tangle/cellNc.sbatch |Submitted batch job 4229914
+| Submitting ::   cellNc.r | ./logs/cellNc.r.95.out | ./logs/cellNc.r.95.err | tangle/cellNc.sbatch |Submitted batch job 4229915
+| Submitting ::   cellNc.r | ./logs/cellNc.r.96.out | ./logs/cellNc.r.96.err | tangle/cellNc.sbatch |Submitted batch job 4229916
+| Submitting ::   cellNc.r | ./logs/cellNc.r.97.out | ./logs/cellNc.r.97.err | tangle/cellNc.sbatch |Submitted batch job 4229917
+| Submitting ::   cellNc.r | ./logs/cellNc.r.98.out | ./logs/cellNc.r.98.err | tangle/cellNc.sbatch |Submitted batch job 4229918
+| Submitting ::   cellNc.r | ./logs/cellNc.r.99.out | ./logs/cellNc.r.99.err | tangle/cellNc.sbatch |Submitted batch job 4229919
+| Submitting ::   cellNc.r | ./logs/cellNc.r.100.out | ./logs/cellNc.r.100.err | tangle/cellNc.sbatch |Submitted batch job 4229920
+| Submitting ::   cellNc.r | ./logs/cellNc.r.101.out | ./logs/cellNc.r.101.err | tangle/cellNc.sbatch |Submitted batch job 4229921
+| Submitting ::   cellNc.r | ./logs/cellNc.r.102.out | ./logs/cellNc.r.102.err | tangle/cellNc.sbatch |Submitted batch job 4229922
+| Submitting ::   cellNc.r | ./logs/cellNc.r.103.out | ./logs/cellNc.r.103.err | tangle/cellNc.sbatch |Submitted batch job 4229923
+| Submitting ::   cellNc.r | ./logs/cellNc.r.104.out | ./logs/cellNc.r.104.err | tangle/cellNc.sbatch |Submitted batch job 4229924
+| Submitting ::   cellNc.r | ./logs/cellNc.r.105.out | ./logs/cellNc.r.105.err | tangle/cellNc.sbatch |Submitted batch job 4229925
+| Submitting ::   cellNc.r | ./logs/cellNc.r.106.out | ./logs/cellNc.r.106.err | tangle/cellNc.sbatch |Submitted batch job 4229926
+| Submitting ::   cellNc.r | ./logs/cellNc.r.107.out | ./logs/cellNc.r.107.err | tangle/cellNc.sbatch |Submitted batch job 4229927
+| Submitting ::   cellNc.r | ./logs/cellNc.r.108.out | ./logs/cellNc.r.108.err | tangle/cellNc.sbatch |Submitted batch job 4229928
+| Submitting ::   cellNc.r | ./logs/cellNc.r.109.out | ./logs/cellNc.r.109.err | tangle/cellNc.sbatch |Submitted batch job 4229929
+| Submitting ::   cellNc.r | ./logs/cellNc.r.110.out | ./logs/cellNc.r.110.err | tangle/cellNc.sbatch |Submitted batch job 4229930
+| Submitting ::   cellNc.r | ./logs/cellNc.r.111.out | ./logs/cellNc.r.111.err | tangle/cellNc.sbatch |Submitted batch job 4229931
+| Submitting ::   cellNc.r | ./logs/cellNc.r.112.out | ./logs/cellNc.r.112.err | tangle/cellNc.sbatch |Submitted batch job 4229932
+| Submitting ::   cellNc.r | ./logs/cellNc.r.113.out | ./logs/cellNc.r.113.err | tangle/cellNc.sbatch |Submitted batch job 4229933
+| Submitting ::   cellNc.r | ./logs/cellNc.r.114.out | ./logs/cellNc.r.114.err | tangle/cellNc.sbatch |Submitted batch job 4229934
+| Submitting ::   cellNc.r | ./logs/cellNc.r.115.out | ./logs/cellNc.r.115.err | tangle/cellNc.sbatch |Submitted batch job 4229935
+| Submitting ::   cellNc.r | ./logs/cellNc.r.116.out | ./logs/cellNc.r.116.err | tangle/cellNc.sbatch |Submitted batch job 4229936
+| Submitting ::   cellNc.r | ./logs/cellNc.r.117.out | ./logs/cellNc.r.117.err | tangle/cellNc.sbatch |Submitted batch job 4229937
+| Submitting ::   cellNc.r | ./logs/cellNc.r.118.out | ./logs/cellNc.r.118.err | tangle/cellNc.sbatch |Submitted batch job 4229938
+| Submitting ::   cellNc.r | ./logs/cellNc.r.119.out | ./logs/cellNc.r.119.err | tangle/cellNc.sbatch |Submitted batch job 4229939
+| Submitting ::   cellNc.r | ./logs/cellNc.r.120.out | ./logs/cellNc.r.120.err | tangle/cellNc.sbatch |Submitted batch job 4229940
 #+end_example
 
 
 #+BEGIN_SRC sh :session :results silent
-  scancel -u nbest -p bigmem
+  scancel -u nbest -p 
 #+END_SRC
 
 #+BEGIN_SRC sh :session :results raw
@@ -669,4 +841,16 @@ done
 
 #+RESULTS:
 : 33284
+
+
+
+** Demonstrate ncdf4 time metadata
+
+#+BEGIN_SRC R :results value
+  nc <- nc_open( "data/psims/047/001/047_001.psims.nc4")
+  nc$dim$`watch/time`$units
+#+END_SRC
+
+#+RESULTS:
+: days since 1860-01-01 00:00:00
 

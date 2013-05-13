@@ -3,7 +3,7 @@
 ## --interactive
 
 stripe <- as.integer( argv[ 1])
-## stripe <- 1
+years <- 1958:2001
 
 library( ncdf4)
 library( raster)
@@ -12,8 +12,7 @@ library( ascii)
 options( asciiType= "org")
 
 library( doMC)  
-## registerDoMC( multicore:::detectCores())
-registerDoMC( 8)
+registerDoMC( multicore:::detectCores())
 
 ## options( error= recover)
 
@@ -37,23 +36,25 @@ ascii( as.list( watchVars), list.type= "label")
 watchMask <- setMinMax(
   raster( "data/output/watchMask30min.tif"))
   
-watchAnchorPoints <-
+watchAnchorPoints <- {
+  watchRes <- res( watchMask)[ 1]
   cbind(
     lon= seq(
-      from= xmin( watchMask),
-      to= xmax( watchMask)- res( watchMask)[1],
-      by= 1), ## res( watchMask)[1] * 10),
+      from= xmin( watchMask) + watchRes / 2,
+      to= xmax( watchMask) - watchRes / 2,
+      by= 3), 
     lat= ymax( watchMask))
+}
 
-readWatchValues <- function(  xy, var= "tmin", n= 10) {
-  ncFn <- sprintf( "data/output/%s_watch_1958-2001_30min.nc4", watchVars[ var])
+readWatchValues <- function(  xy, var= "tmin", year= 1958, n= 6) {
+  ncFn <- sprintf( "data/output/%s_watch_%s_30min.nc4", watchVars[ var], year)
   nc <- nc_open( ncFn)
   ## r <- raster( ncFn, band= 1)
-  r <- raster( watchMask)
+  ## r <- raster( watchMask)
   column <-
     rowColFromCell(
-      r, cellFromXY(
-        r, xy= xy))[ 2]
+      watchMask, cellFromXY(
+        watchMask, xy= xy))[ 2]
   m <-
     ncvar_get(
       nc,
@@ -81,22 +82,21 @@ readWatchValues <- function(  xy, var= "tmin", n= 10) {
 
 ## system.time( {
 
-  watchValues <-
-    foreach(
-      var= names( watchVars)
-      ## var= "tmin",
-      ## .inorder= TRUE) %:%
-      ##   foreach(
-      ##     year= years,
-      ## .combine= abind,
-      ##.multicombine= TRUE
-      ) %dopar% {
-        readWatchValues( watchAnchorPoints[ stripe,], var= var)
-      }
-  names( watchValues) <- names( watchVars)
-  for( var in names( watchVars))
-    names( dimnames( watchValues[[ var]])) <-
-      c( "longitude", "latitude", "time")
+watchValues <-
+  foreach(
+    var= names( watchVars)) %:%
+  ## var= "tmin",
+  ## .inorder= TRUE) %:%
+  foreach(
+    year= years,
+    .combine= abind,
+    .multicombine= TRUE ) %dopar% {
+      readWatchValues( watchAnchorPoints[ stripe,], var= var, year= year)
+    }
+names( watchValues) <- names( watchVars)
+for( var in names( watchVars))
+  names( dimnames( watchValues[[ var]])) <-
+  c( "longitude", "latitude", "time")
 
 ## })
 
@@ -170,7 +170,7 @@ psimsNcFromXY <- function(
   world <- raster()
   res( world) <- resWorld
   rowCol <- as.list( rowColFromCell( world, cellFromXY( world, xy))[1,])
-  ncFile <- sprintf( "data/psims/%1$d/%2$d/%1$d_%2$d.psims.nc4", rowCol$row, rowCol$col)
+  ncFile <- sprintf( "data/psims/%1$03d/%2$03d/%1$03d_%2$03d.psims.nc4", rowCol$row, rowCol$col)
   if( !file.exists( dirname( ncFile))) {
     dir.create( path= dirname( ncFile), recursive= TRUE)
   }
@@ -188,7 +188,7 @@ writePsimsNc <- function( watchValues, col, row) {
   xy <- c(
     lon= as.numeric( dimnames( watchValues[[ "tmin"]])$longitude[ col]),
     lat= as.numeric( dimnames( watchValues[[ "tmin"]])$latitude[  row]))
-  if( !is.na( extract( watchMask, rbind( xy)))) return( NA)
+  if( is.na( extract( watchMask, rbind( xy)))) return( NA)
   psimsNc <- psimsNcFromXY(
     xy, ncDays= as.integer( dimnames( watchValues[[ "tmin"]])$time))
   for( var in names( watchValues)) {
@@ -197,7 +197,7 @@ writePsimsNc <- function( watchValues, col, row) {
         solar= vals *86400 /1000000, # Change units to MJ /m^2 /day
         tmin= vals -273.15,          # change K to C
         tmax= vals -273.15,
-        precip= vals)
+        precip= vals *3600 *24)      # Change mm/s to mm/day
     ## browser()
     ncvar_put(
       nc= psimsNc,
@@ -213,7 +213,7 @@ writePsimsNc <- function( watchValues, col, row) {
 ##   system.time(
 
 psimsNcFile <-
-  foreach( col= 1:10, .combine= c) %:%
+  foreach( col= 1:6, .combine= c) %:%
   foreach( row= 1:254, .combine= c) %dopar% {
     writePsimsNc( watchValues, col, row)
   }
